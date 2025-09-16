@@ -1,72 +1,269 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>open-ai-cost-calculator &mdash; Instant token-cost estimates for OpenAI & Azure OpenAI</title>
+  <meta charset="UTF-8" />
+  <title>openai_cost_calculator — Instant, accurate token-cost estimates</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <style>
-      :root { --blue:#1468d6; --bg:#f7f9fc; --txt:#1f2933; --code:#eef2f7; }
-      *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
-      body{margin:0;background:var(--bg);color:var(--txt);line-height:1.55;font-size:17px;}
-      header{background:var(--blue);color:#ffffff;padding:2.5rem 1rem;text-align:center;}
-      header h1{margin:0;font-size:2.6rem;font-weight:700;}
-      header p{margin:.7rem auto 0;max-width:620px;font-size:1.2rem;opacity:.9;}
-      main{max-width:880px;margin:2.5rem auto;padding:0 1rem;}
-      h2{margin-top:2.4rem;font-size:1.85rem;color:var(--blue);}
-      h3{margin-top:1.8rem;font-size:1.3rem;color:var(--blue);}
-      pre,code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:var(--code);}
-      pre{padding:1.1rem 1rem;border-radius:6px;overflow-x:auto;}
-      code{padding:.1em .25em;border-radius:4px;}
-      section + section{margin-top:3.2rem;}
-      a{color:var(--blue);text-decoration:none;border-bottom:1px solid rgba(20,104,214,.25);}
-      a:hover{border-bottom-color:var(--blue);}
-      footer{margin:4rem 0 2rem;text-align:center;font-size:.9rem;opacity:.75;}
-      .highlight{background-color:#fff3cd;padding:.5rem;border-radius:4px;margin:1rem 0;}
+    /* ================================
+       Design tokens
+    =================================*/
+    :root{
+      --bg: #0b0c0f;           /* dark surface default (auto toggled) */
+      --panel: #111318;
+      --panel-2: #0e1015;
+      --text: #e8eef8;
+      --muted: #aab6c9;
+      --brand: #4da3ff;
+      --brand-2:#9ad0ff;
+      --link:  #7fc4ff;
+      --border:#1b2330;
+      --code:  #0a0d13;
+      --accent:#1a2738;
+      --ok:#2ecc71;
+      --warn:#ffbf4d;
+      --err:#ff6b6b;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f6f8fb; --panel:#ffffff; --panel-2:#ffffff;
+        --text:#1e293b; --muted:#51607a; --brand:#1468d6; --brand-2:#5aa5ff;
+        --link:#0b74ff; --border:#e6ebf3; --code:#f0f3f9; --accent:#eaf2ff;
+        --shadow: 0 10px 25px rgba(16,24,40,.08);
+      }
+    }
+    [data-theme="light"]{
+      --bg:#f6f8fb; --panel:#ffffff; --panel-2:#ffffff;
+      --text:#1e293b; --muted:#51607a; --brand:#1468d6; --brand-2:#5aa5ff;
+      --link:#0b74ff; --border:#e6ebf3; --code:#f0f3f9; --accent:#eaf2ff;
+      --shadow: 0 10px 25px rgba(16,24,40,.08);
+    }
+
+    /* ================================
+       Base
+    =================================*/
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background:linear-gradient(180deg,var(--bg),var(--panel-2));
+      line-height:1.6;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+    }
+    a{color:var(--link); text-decoration:none}
+    a:hover{text-decoration:underline}
+    img{max-width:100%}
+
+    /* ================================
+       Layout
+    =================================*/
+    .topbar{
+      position:sticky; top:0; z-index:60;
+      backdrop-filter:saturate(120%) blur(8px);
+      background:color-mix(in oklab, var(--panel) 90%, transparent);
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between;
+      padding:.6rem 1rem;
+    }
+    .brand{
+      display:flex; align-items:center; gap:.6rem; font-weight:700; letter-spacing:.2px;
+    }
+    .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 4px color-mix(in oklab, var(--brand) 20%, transparent)}
+    .topbar .actions{display:flex; gap:.4rem}
+    .btn{
+      appearance:none; border:1px solid var(--border); background:var(--panel);
+      color:var(--text); padding:.45rem .7rem; border-radius:10px; cursor:pointer;
+      font-weight:600; box-shadow:var(--shadow); transition:.18s transform ease;
+    }
+    .btn:hover{transform:translateY(-1px)}
+    .btn.secondary{background:var(--accent); border-color:color-mix(in oklab,var(--accent),var(--border))}
+    .btn.ghost{background:transparent; box-shadow:none}
+
+    .layout{
+      display:grid; grid-template-columns: 280px 1fr; gap:0;
+      min-height:calc(100vh - 56px);
+    }
+    aside{
+      border-right:1px solid var(--border);
+      background:linear-gradient(180deg, var(--panel), color-mix(in oklab, var(--panel) 85%, transparent));
+      position:sticky; top:56px; height:calc(100vh - 56px); overflow:auto;
+    }
+    main{
+      padding:2rem 1.25rem 4rem;
+      max-width:1100px;
+      width:100%;
+      margin:0 auto;
+    }
+
+    /* Sidebar nav */
+    .nav{
+      padding:1rem .75rem 2rem;
+    }
+    .nav h6{
+      margin:1rem .75rem .25rem;
+      font-size:.75rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    }
+    .nav a{
+      display:block; padding:.45rem .75rem; border-radius:10px;
+      color:var(--text); text-decoration:none; border:1px solid transparent;
+    }
+    .nav a:hover{background:color-mix(in oklab,var(--accent) 60%, transparent)}
+    .nav a.active{
+      background:color-mix(in oklab,var(--brand) 12%, transparent);
+      border-color:color-mix(in oklab,var(--brand) 35%, var(--border));
+      color:var(--brand-2);
+    }
+    .nav .sub{margin:.25rem 0 .65rem .75rem; border-left:1px dashed var(--border); padding-left:.75rem}
+    .nav .sub a{font-size:.95rem; color:var(--muted)}
+
+    /* Sections */
+    .hero{
+      margin: 1.2rem 0 1.5rem;
+      padding: 1.2rem 1.2rem;
+      background:linear-gradient(180deg, color-mix(in oklab,var(--brand) 12%, transparent), transparent);
+      border:1px solid color-mix(in oklab, var(--brand) 25%, var(--border));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .hero h1{margin:.2rem 0 0; font-size:2rem}
+    .hero p{margin:.6rem 0 0; color:var(--muted)}
+
+    section{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem 1.2rem; margin:1rem 0 1.25rem; box-shadow:var(--shadow)}
+    section h2{margin:.2rem 0 1rem; font-size:1.4rem}
+    section h3{margin:1.1rem 0 .5rem; font-size:1.1rem}
+    .lead{color:var(--muted)}
+
+    /* Code blocks + copy */
+    pre{position:relative; background:var(--code); border:1px solid var(--border); border-radius:12px; padding:1rem; overflow:auto}
+    code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.95rem}
+    .copy{
+      position:absolute; top:.5rem; right:.5rem; border:1px solid var(--border); background:var(--panel);
+      padding:.25rem .45rem; border-radius:8px; cursor:pointer; font-size:.8rem; color:var(--muted)
+    }
+    .copy.ok{color:var(--ok)}
+    .copy.err{color:var(--err)}
+
+    /* Admonitions */
+    .note,.tip,.warn{
+      border-radius:10px; padding:.8rem .9rem; margin:.8rem 0; border:1px solid var(--border);
+    }
+    .note{background:color-mix(in oklab,var(--accent) 55%, transparent)}
+    .tip{background:color-mix(in oklab,var(--ok) 9%, transparent)}
+    .warn{background:color-mix(in oklab,var(--warn) 14%, transparent)}
+
+    /* Tables */
+    table{border-collapse:separate; border-spacing:0; width:100%; overflow:auto; border:1px solid var(--border); border-radius:12px}
+    th,td{padding:.6rem .7rem; border-bottom:1px solid var(--border)}
+    th{background:color-mix(in oklab,var(--accent) 45%, transparent); text-align:left}
+    tr:last-child td{border-bottom:none}
+
+    /* Footer */
+    footer{opacity:.7; text-align:center; padding:2.2rem .75rem}
+
+    /* Mobile */
+    #navToggle{display:none}
+    @media (max-width: 980px){
+      .layout{grid-template-columns:1fr}
+      aside{
+        position:fixed; inset:56px 0 auto 0; height:calc(100vh - 56px); transform:translateX(-100%);
+        transition:transform .18s ease; z-index:50
+      }
+      aside.open{transform:translateX(0)}
+      #navToggle{display:inline-block}
+      main{padding:1rem .9rem 3rem}
+      .hero h1{font-size:1.6rem}
+    }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>openai_cost_calculator</h1>
-  <p>🪙 One-line helper that turns <strong>any</strong> OpenAI / Azure OpenAI response (&nbsp;Chat Completions&nbsp;<em>or</em>&nbsp;Responses API&nbsp;) into a human-readable USD cost &mdash; accurate to 8&nbsp;decimals, with both string and strongly-typed APIs.</p>
-</header>
-
-<main>
-
-  <section id="why">
-    <h2>Why this library?</h2>
-    <ul>
-      <li><strong>Per-query accurate:</strong> calculates the <em>exact cost</em> for each user query individually, based on token counts returned by OpenAI or Azure — no model guessing, no aggregate billing approximations.</li>
-      <li><strong>Dual-API support:</strong> works with <code>chat.completions.create()</code> <em>and</em> the new <code>responses.create()</code>.</li>
-      <li><strong>Zero boilerplate:</strong> one import &amp; one call: <code>estimate_cost(resp)</code>.</li>
-      <li><strong>Strongly-typed API:</strong> new typed functions return CostBreakdown dataclass with Decimal precision for accurate financial calculations.</li>
-      <li><strong>Backward compatibility:</strong> legacy string-based API remains unchanged.</li>
-      <li><strong>Pricing auto-refresh:</strong> daily CSV pull with a helper <code>refresh_pricing()</code>.</li>
-      <li><strong>Edge-case aware:</strong> cached tokens, undated models, streaming generators, Azure deployments &hellip; handled!</li>
-      <li><strong>Predictable output:</strong> legacy API returns strings formatted to 8 decimal places; typed API uses Decimal for precise arithmetic.</li>
-    </ul>
-  </section>  
-
-
-<section id="install">
-  <h2>Installation</h2>
-  <pre><code>pip install openai-cost-calculator</code></pre>
-  <p><small>(Package name on PyPI uses dashes; import name is <code>from openai_cost_calculator import&nbsp;…</code>.)</small></p>
-</section>
-
-
-<section id="quickstart">
-  <h2>Quick start</h2>
-  
-  <div class="highlight">
-    <strong>New:</strong> For applications requiring precise financial calculations, use the strongly-typed API with <code>estimate_cost_typed()</code>.
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <span>openai_cost_calculator</span>
+    </div>
+    <div class="actions">
+      <button id="navToggle" class="btn secondary">Menu</button>
+      <button id="themeToggle" class="btn ghost" title="Toggle theme">🌓</button>
+      <a class="btn" href="https://github.com/orkunkinay/openai_cost_calculator" target="_blank" rel="noopener">GitHub</a>
+    </div>
   </div>
 
-  <h3>Legacy String API (Backward Compatible)</h3>
-<pre><code class="language-python">from openai import OpenAI
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <nav class="nav">
+        <h6>Getting started</h6>
+        <a href="#overview" class="active">Overview</a>
+        <a href="#install">Installation</a>
+        <a href="#quickstart">Quick start</a>
+
+        <h6>API reference</h6>
+        <a href="#typed-api">Typed API</a>
+        <div class="sub">
+          <a href="#costbreakdown">CostBreakdown</a>
+        </div>
+        <a href="#legacy-api">Legacy API</a>
+        <a href="#pricing-utils">Pricing utilities</a>
+
+        <h6>Concepts</h6>
+        <a href="#pricing-sources">Pricing sources & cache</a>
+        <a href="#streaming">Streaming</a>
+        <a href="#errors">Error handling</a>
+
+        <h6>Cookbook</h6>
+        <a href="#cookbook">Add your own model pricing</a>
+
+        <h6>Help</h6>
+        <a href="#troubleshooting">Troubleshooting</a>
+        <a href="#license">License</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <main>
+      <div class="hero">
+        <h1>Instant, accurate USD cost estimates for OpenAI & Azure OpenAI</h1>
+        <p class="lead">Turn any API response (Chat Completions or Responses API, streaming or non-streaming) into precise, per-request costs — 8-decimal strings or <code>Decimal</code> via a typed dataclass.</p>
+      </div>
+
+      <section id="overview">
+        <h2>Overview</h2>
+        <p>
+          <strong>openai_cost_calculator</strong> is a tiny, production-hardened helper that reads the
+          usage counters returned by OpenAI/Azure OpenAI and outputs the exact USD cost for that call.
+          It supports cached tokens, undated models, streaming generators, and both classic and new SDKs.
+        </p>
+        <ul>
+          <li><strong>Typed API</strong> for exact financial arithmetic (<code>Decimal</code>)</li>
+          <li><strong>Legacy API</strong> for drop-in string output (8 decimal places)</li>
+          <li><strong>Pricing</strong> loaded from a remote CSV with a <em>24h cache</em> + local overrides</li>
+          <li><strong>Offline mode</strong> for pinned environments (no network calls)</li>
+        </ul>
+      </section>
+
+      <section id="install">
+        <h2>Installation</h2>
+        <pre><button class="copy" data-copy>Copy</button><code>pip install openai-cost-calculator</code></pre>
+        <p class="lead"><small>Package name on PyPI uses dashes; import name uses underscores.</small></p>
+      </section>
+
+      <section id="quickstart">
+        <h2>Quick start</h2>
+        <div class="tip"><strong>Tip:</strong> Prefer the <em>typed</em> API for money math.</div>
+
+        <h3>One-line (legacy string API)</h3>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">from openai import OpenAI
 from openai_cost_calculator import estimate_cost
 
-client = OpenAI(api_key="sk-…")
+client = OpenAI()
 resp = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role":"user","content":"Hi there!"}],
@@ -76,165 +273,235 @@ print(estimate_cost(resp))
 # {'prompt_cost_uncached': '0.00000150',
 #  'prompt_cost_cached'  : '0.00000000',
 #  'completion_cost'     : '0.00000600',
-#  'total_cost'          : '0.00000750'}
-</code></pre>
+#  'total_cost'          : '0.00000750'}</code></pre>
 
-  <h3>Strongly-Typed API (Recommended for New Code)</h3>
-<pre><code class="language-python">from openai import OpenAI
+        <h3 id="typed-api">Typed API (recommended)</h3>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">from openai import OpenAI
 from openai_cost_calculator import estimate_cost_typed
 
-client = OpenAI(api_key="sk-…")
+client = OpenAI()
 resp = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[{"role":"user","content":"Hi there!"}],
 )
 
 cost = estimate_cost_typed(resp)
-print(f"Total cost: ${cost.total_cost}")  # Decimal('0.00000750')
+print(cost.total_cost)                 # Decimal('0.00000750')
+print(cost.as_dict(stringify=True))    # strings, 8 dp</code></pre>
 
-# Access individual components with Decimal precision
-print(f"Prompt (uncached): ${cost.prompt_cost_uncached}")
-print(f"Prompt (cached): ${cost.prompt_cost_cached}")
-print(f"Completion: ${cost.completion_cost}")
-
-# Convert to dict as needed
-decimal_dict = cost.as_dict(stringify=False)  # Decimal values
-string_dict = cost.as_dict(stringify=True)    # String values (legacy format)
-</code></pre>
-
-  <h3>Responses API</h3>
-<pre><code class="language-python"># Works with both APIs
-resp = client.responses.create(
+        <h3>Responses API</h3>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">resp = client.responses.create(
     model="gpt-4.1-mini",
     input=[{"role":"user","content":"Hi there!"}],
 )
 
-# Legacy: returns dict[str, str]
-cost_dict = estimate_cost(resp)
+# Both work
+from openai_cost_calculator import estimate_cost, estimate_cost_typed
+print(estimate_cost(resp))         # dict[str, str]
+print(estimate_cost_typed(resp))   # CostBreakdown</code></pre>
+      </section>
 
-# Typed: returns CostBreakdown dataclass
-cost_obj = estimate_cost_typed(resp)
-</code></pre>
-</section>
-
-
-<section id="api">
-  <h2>Public API</h2>
-  
-  <h3>Strongly-Typed API (Recommended)</h3>
-  <ul>
-    <li><code>estimate_cost_typed(response) → CostBreakdown</code><br>
-        Accepts ChatCompletion, streamed chunks, <em>or</em> Response objects; returns a dataclass with Decimal fields:</li>
-    <pre><code>CostBreakdown(
+      <section id="costbreakdown">
+        <h2>CostBreakdown dataclass</h2>
+        <p>Typed results are returned as a frozen dataclass with <code>Decimal</code> fields:</p>
+<pre><code>CostBreakdown(
   prompt_cost_uncached: Decimal,
-  prompt_cost_cached: Decimal,
-  completion_cost: Decimal,
-  total_cost: Decimal
+  prompt_cost_cached:   Decimal,
+  completion_cost:      Decimal,
+  total_cost:           Decimal
 )</code></pre>
+        <p>Use <code>.as_dict(stringify=True|False)</code> to convert to 8-dp strings (legacy) or raw <code>Decimal</code>s.</p>
+      </section>
 
-    <li><code>calculate_cost_typed(usage, rates) → CostBreakdown</code><br>
-        Lower-level function for direct cost calculation using usage dict and rate dict.</li>
-
-    <li><code>CostBreakdown.as_dict(stringify=True)</code><br>
-        Convert dataclass to dict. If <code>stringify=True</code> (default), returns 8-decimal strings. 
-        If <code>stringify=False</code>, returns raw Decimal objects.</li>
-  </ul>
-
-  <h3>Legacy String API (Backward Compatible)</h3>
-  <ul>
-    <li><code>estimate_cost(response) → dict[str,str]</code><br>
-        Accepts ChatCompletion, streamed chunks, <em>or</em> Response objects; returns a dict with:</li>
-    <pre><code>{
+      <section id="legacy-api">
+        <h2>Legacy API</h2>
+        <p><code>estimate_cost(response) → dict[str,str]</code> keeps your existing code working. Returns:</p>
+<pre><code>{
   "prompt_cost_uncached": "…",
   "prompt_cost_cached"  : "…",
   "completion_cost"     : "…",
   "total_cost"          : "…"
 }</code></pre>
-  </ul>
+      </section>
 
-  <h3>Common Functions</h3>
-  <ul>
-    <li><code>refresh_pricing()</code> &mdash; force-reload the remote CSV (handy right after the pricing sheet is updated).</li>
-    <li><code>CostEstimateError</code> &mdash; one unified exception for bad input, missing pricing, etc.</li>
-  </ul>
+      <section id="pricing-utils">
+        <h2>Pricing utilities</h2>
+        <p>The library resolves model rates from a remote CSV and merges local overrides.</p>
+        <table>
+          <thead><tr><th>Function</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>refresh_pricing()</code></td><td>Force-reload the remote CSV (24-hour cache is bypassed).</td></tr>
+            <tr><td><code>set_offline_mode(True)</code></td><td>Disable all network fetches; only local overrides are used.</td></tr>
+            <tr><td><code>add_pricing_entry(name,date, …)</code></td><td>Add/override a single (model, YYYY-MM-DD) row.</td></tr>
+            <tr><td><code>add_pricing_entries([...])</code></td><td>Bulk add/override multiple rows.</td></tr>
+            <tr><td><code>clear_local_pricing()</code></td><td>Drop all in-process overrides (remote cache unaffected).</td></tr>
+          </tbody>
+        </table>
+        <div class="note">
+          <strong>Note:</strong> The pricing CSV contains only Text token prices (no Token-Type column). If a model string lacks a date suffix,
+          the calculator uses <em>today’s date</em> and selects the latest pricing row with <code>date ≤ today</code>.
+        </div>
+      </section>
 
-  <h3>When to Use Which API</h3>
-  <p><strong>Use the typed API</strong> (<code>estimate_cost_typed</code>) when:</p>
-  <ul>
-    <li>Building new applications</li>
-    <li>Performing financial calculations requiring precision</li>
-    <li>Working with accounting or billing systems</li>
-    <li>Need to aggregate costs across multiple requests</li>
-  </ul>
-  
-  <p><strong>Use the legacy API</strong> (<code>estimate_cost</code>) when:</p>
-  <ul>
-    <li>Maintaining existing codebases</li>
-    <li>Need string output for JSON serialization</li>
-    <li>Working with systems expecting the original format</li>
-  </ul>
-</section>
+      <section id="pricing-sources">
+        <h2>Pricing sources & cache</h2>
+        <ul>
+          <li><strong>Remote CSV</strong> (GitHub) is fetched at most once every 24 hours per process.</li>
+          <li><strong>Local overrides</strong> always take precedence over remote rows on key collision.</li>
+          <li><strong>Offline mode</strong> disables remote fetches — ideal for air-gapped or pinned deployments.</li>
+        </ul>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">from openai_cost_calculator import set_offline_mode, refresh_pricing
+set_offline_mode(False)  # allow using the remote CSV
+refresh_pricing()        # refresh the 24h cache now</code></pre>
+      </section>
 
+      <section id="streaming">
+        <h2>Streaming</h2>
+        <p>Pass the generator directly. The helper walks the stream and uses the <em>last</em> chunk that carries <code>.usage</code>.</p>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role":"user","content":"Hi!"}],
+    stream=True,
+    stream_options={"include_usage": True},
+)
 
-<section id="examples">
-  <h2>Financial Calculation Example</h2>
-<pre><code class="language-python">from openai_cost_calculator import estimate_cost_typed
-from decimal import Decimal
+from openai_cost_calculator import estimate_cost_typed
+cost = estimate_cost_typed(stream)
+print(cost.total_cost)</code></pre>
+      </section>
 
-# Calculate precise costs across multiple requests
-total_cost = Decimal('0')
-for response in responses:
-    cost = estimate_cost_typed(response)
-    total_cost += cost.total_cost
-    
-print(f"Total spend: ${total_cost}")  # Accurate Decimal arithmetic
-</code></pre>
-</section>
+      <section id="errors">
+        <h2>Error handling</h2>
+        <p>All recoverable errors raise <code>CostEstimateError</code> with a clear message (e.g., missing pricing row, bad input).</p>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">from openai_cost_calculator import estimate_cost_typed, CostEstimateError
+try:
+    cost = estimate_cost_typed(resp)
+except CostEstimateError as e:
+    print("Could not estimate cost:", e)</code></pre>
+        <div class="note">
+          Azure OpenAI responses include the original model string (e.g., <code>gpt-4o-mini-2024-07-18</code>) — deployments names are ignored.
+        </div>
+      </section>
 
+      <section id="cookbook">
+        <h2>Cookbook — add pricing for <em>any</em> model</h2>
+        <p>
+          You can cost any provider’s response as long as you teach the calculator the price point for that
+          <code>(model_name, model_date)</code>. In <strong>offline mode</strong> the library won’t reach the network;
+          only your overrides are used.
+        </p>
+<pre><button class="copy" data-copy>Copy</button><code class="language-python">from litellm import completion
+from openai_cost_calculator import estimate_cost_typed, set_offline_mode, add_pricing_entry
 
-<section id="troubleshooting">
-  <h2>Troubleshooting &amp; FAQs</h2>
+set_offline_mode(True)
+# Teach the library a new price point:
+add_pricing_entry(
+    "ollama/qwen3:30b", "2025-08-01",
+    input_price=0.20,         # USD per 1M input tokens
+    output_price=0.60,        # USD per 1M output tokens
+    cached_input_price=0.04,  # optional
+)
 
-  <h3>🎉 A brand-new model just launched &ndash; my code raises "pricing not found"</h3>
-  <ol>
-    <li>Head to the <a href="https://github.com/orkunkinay/openai_cost_calculator/blob/main/data/gpt_pricing_data.csv" target="_blank">pricing CSV on GitHub</a>.</li>
-    <li>
-      <strong>If the new model/date is missing</strong> &nbsp;&rarr;&nbsp;
-      open an issue or email the maintainer (<a href="mailto:orkunkinay@sabanciuniv.edu">orkunkinay@sabanciuniv.edu</a>).
-    </li>
-    <li>
-      <strong>If the new row is already there</strong> &nbsp;&rarr;&nbsp;
-      call <code>refresh_pricing()</code> once &mdash; the 24-hour cache is then refreshed for every worker.
-    </li>
-  </ol>
+response = completion(
+    model="ollama/qwen3:30b",
+    messages=[{ "content": "respond in 20 words. who are you?","role": "user"}],
+    api_base="http://localhost:11434"
+)
 
-  <h3>🔄 Streaming chunks</h3>
-  <p>Just pass the generator returned by <code>client.chat.completions.create(..., stream=True, stream_options={"include_usage": True})</code> straight into <code>estimate_cost</code> or <code>estimate_cost_typed</code>. The helper silently walks the stream and uses the last chunk that contains <code>.usage</code>.</p>
+print(estimate_cost_typed(response))</code></pre>
+        <div class="tip">
+          <strong>Works for any model name:</strong> choose a stable identifier (e.g., your deployment name),
+          pick a date string (<code>YYYY-MM-DD</code>) you control, and supply the per-1M token prices.
+          Add more entries over time to reflect price changes by date.
+        </div>
+      </section>
 
-  <h3>⚠️ "cached_tokens = 0" even though I know some were cached</h3>
-  <p>Make sure you request <code>include_usage_details=True</code> (classic) or <code>stream_options={"include_usage": True}</code> (streaming). Without it the API omits the cached-token breakdown.</p>
+      <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <h3>“Pricing not found” after a new model launch</h3>
+        <ol>
+          <li>Check that the model/date row exists in the project’s pricing CSV.</li>
+          <li>If it exists, call <code>refresh_pricing()</code> (24h cache).</li>
+          <li>Otherwise, temporarily add a local row with <code>add_pricing_entry()</code>. Then create an issue from <a href="https://github.com/orkunkinay/openai_cost_calculator/issues/new">here</a>.</li>
+        </ol>
 
-  <h3>🏷️ Azure OpenAI deployment IDs vs. model names</h3>
-  <p>Azure responses still carry the original model string (<code>chunk.model</code>) &mdash; the calculator ignores the deployment name, so you're covered.</p>
+        <h3>“cached_tokens = 0” even with caching</h3>
+        <p>Request usage details: classic API needs <code>include_usage_details=True</code>; streaming needs <code>stream_options={"include_usage": True}</code>.</p>
 
-  <h3>⏱️ Performance concerns</h3>
-  <p>The only network call is the pricing CSV (<em>max once every 24 h</em>). All cost maths are pure Python and nanosecond-level.</p>
-</section>
+        <h3>What if the model string has no date?</h3>
+        <p>The library uses today’s date and selects the latest CSV row with <code>date ≤ today</code>.</p>
+      </section>
 
+      <section id="license">
+        <h2>License & contributions</h2>
+        <p>MIT License © 2025 Orkun Kınay & Murat Barkın Kınay. PRs that enhance robustness (SDK changes, pricing formats) are welcome.</p>
+      </section>
 
-<section id="contributing">
-  <h2>Contributing &amp; License</h2>
-  <p>
-    PRs for additional edge-cases, new pricing formats or SDK changes are welcome!
-    <br>MIT&nbsp;License &copy;&nbsp;2025&nbsp;Orkun&nbsp;Kınay&nbsp;&&nbsp;Murat&nbsp;Barkın&nbsp;Kınay
-  </p>
-</section>
+      <footer>
+        Built for accuracy and simplicity — refresh pricing, monitor spend, ship with confidence.
+      </footer>
+    </main>
+  </div>
 
-</main>
+  <script>
+    // Theme toggle (persist to localStorage)
+    (function(){
+      const key = "occ-theme";
+      const btn = document.getElementById("themeToggle");
+      const saved = localStorage.getItem(key);
+      if(saved){ document.body.setAttribute("data-theme", saved); }
+      btn.addEventListener("click", ()=>{
+        const cur = document.body.getAttribute("data-theme");
+        const next = cur === "light" ? "" : "light";
+        if(next){ document.body.setAttribute("data-theme", next); localStorage.setItem(key, next); }
+        else{ document.body.removeAttribute("data-theme"); localStorage.removeItem(key); }
+      });
+    }());
 
-<footer>
-  <p>Built with ♥&nbsp; &mdash; refresh your pricing, monitor your spend, hack with confidence.</p>
-</footer>
+    // Mobile sidebar toggle
+    (function(){
+      const btn = document.getElementById("navToggle");
+      const aside = document.getElementById("sidebar");
+      btn.addEventListener("click", ()=> aside.classList.toggle("open"));
+      // close on link click (mobile)
+      aside.querySelectorAll("a").forEach(a=>a.addEventListener("click", ()=> aside.classList.remove("open")));
+    }());
 
+    // Copy buttons for code blocks
+    (function(){
+      document.querySelectorAll('pre .copy[data-copy]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          const code = btn.parentElement.querySelector('code').innerText;
+          try{
+            await navigator.clipboard.writeText(code);
+            btn.classList.remove('err'); btn.classList.add('ok'); btn.textContent='Copied';
+            setTimeout(()=>{btn.classList.remove('ok'); btn.textContent='Copy'},1200);
+          }catch(e){
+            btn.classList.add('err'); btn.textContent='Error';
+            setTimeout(()=>{btn.classList.remove('err'); btn.textContent='Copy'},1200);
+          }
+        })
+      })
+    }());
+
+    // Scroll spy (highlight active section in sidebar)
+    (function(){
+      const links = Array.from(document.querySelectorAll('aside .nav a')).filter(a=>a.getAttribute('href').startsWith('#'));
+      const sections = links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+      const byId = Object.fromEntries(links.map(a=>[a.getAttribute('href'), a]));
+      const onScroll = ()=>{
+        let best = sections[0];
+        for(const s of sections){
+          const rect = s.getBoundingClientRect();
+          if(rect.top < 120) best = s;
+        }
+        links.forEach(l=>l.classList.remove('active'));
+        const id = '#'+(best?.id||'');
+        if(byId[id]) byId[id].classList.add('active');
+      };
+      document.addEventListener('scroll', onScroll, {passive:true});
+      onScroll();
+    }());
+  </script>
 </body>
 </html>

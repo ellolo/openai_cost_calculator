@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+import importlib
 import pytest
 
 import openai_cost_calculator as occ
@@ -235,3 +236,283 @@ def test_public_api_imports():
     assert hasattr(occ, 'estimate_cost')
     assert hasattr(occ, 'refresh_pricing')
     assert hasattr(occ, 'CostEstimateError')
+
+# --------------------------------------------------------------------------- #
+# Pricing source (remote CSV) + 24h cache + overrides tests                   #
+# --------------------------------------------------------------------------- #
+
+def _csv_text(rows):
+    header = "Model Name,Model Date,Input Price,Cached Input Price,Output Price\n"
+    return header + "\n".join(rows) + "\n"
+
+
+def test_load_pricing_fetch_cache_and_ttl_refresh(monkeypatch):
+    # Reload to undo the autouse fixture's monkeypatch on load_pricing
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    # Reset globals
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing._OFFLINE_ONLY = False
+    pricing._TTL = 10  # small TTL for test
+
+    # Two CSV versions (same key, different numbers)
+    csv_v1 = _csv_text([
+        "gpt-4o-mini,2024-07-18,0.50,0.25,1.00",
+    ])
+    csv_v2 = _csv_text([
+        "gpt-4o-mini,2024-07-18,0.60,0.30,1.20",
+    ])
+
+    call_count = {"n": 0}
+    current_csv = {"text": csv_v1}
+
+    class _Resp:
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): return None
+
+    def fake_get(url, timeout):
+        call_count["n"] += 1
+        return _Resp(current_csv["text"])
+
+    # Simulate time progression
+    times = [1000, 1005, 1012]  # second call within TTL, third beyond TTL
+    def fake_time():
+        return times[0] if len(times) == 1 else times.pop(0)
+
+    monkeypatch.setattr(pricing, "_PRICING_CSV_URL", "http://example.com/test.csv")
+    monkeypatch.setattr(pricing.requests, "get", fake_get)
+    monkeypatch.setattr(pricing.time, "time", fake_time)
+
+    # 1) First fetch
+    data1 = pricing.load_pricing()
+    assert call_count["n"] == 1
+    assert data1[("gpt-4o-mini", "2024-07-18")] == {
+        "input_price": 0.50, "cached_input_price": 0.25, "output_price": 1.00
+    }
+
+    # 2) Within TTL → no refetch
+    data2 = pricing.load_pricing()
+    assert call_count["n"] == 1  # unchanged
+    assert data2 == data1
+
+    # 3) After TTL → refetch to v2
+    current_csv["text"] = csv_v2
+    data3 = pricing.load_pricing()
+    assert call_count["n"] == 2
+    assert data3[("gpt-4o-mini", "2024-07-18")] == {
+        "input_price": 0.60, "cached_input_price": 0.30, "output_price": 1.20
+    }
+
+
+def test_offline_mode_uses_only_local_overrides(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    # Reset
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing._OFFLINE_ONLY = False
+
+    # Fail if network is touched
+    def boom(*a, **k): raise AssertionError("Network should not be used in offline mode")
+    monkeypatch.setattr(pricing.requests, "get", boom)
+
+    pricing.set_offline_mode(True)
+    pricing.add_pricing_entry(
+        "gpt-4o-mini", "2025-08-01",
+        input_price=0.20, output_price=0.60, cached_input_price=0.04
+    )
+    data = pricing.load_pricing()
+    assert ("gpt-4o-mini", "2025-08-01") in data
+    assert data[("gpt-4o-mini", "2025-08-01")] == {
+        "input_price": 0.20, "cached_input_price": 0.04, "output_price": 0.60
+    }
+
+    # No-op refresh in offline mode (and still no network)
+    pricing.refresh_pricing()
+    data2 = pricing.load_pricing()
+    assert data2 == data
+
+
+def test_local_overrides_take_precedence(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing._OFFLINE_ONLY = False
+
+    csv_remote = _csv_text([
+        "gpt-4o-mini,2024-07-18,0.50,0.25,1.00",
+    ])
+
+    class _Resp:
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): return None
+
+    monkeypatch.setattr(pricing.requests, "get", lambda url, timeout: _Resp(csv_remote))
+
+    # Add override with the same key but different values
+    pricing.add_pricing_entry(
+        "gpt-4o-mini", "2024-07-18",
+        input_price=0.99, output_price=2.22, cached_input_price=0.11
+    )
+
+    data = pricing.load_pricing()
+    assert data[("gpt-4o-mini", "2024-07-18")] == {
+        "input_price": 0.99, "cached_input_price": 0.11, "output_price": 2.22
+    }
+
+
+def test_clear_local_pricing(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing.set_offline_mode(True)
+
+    pricing.add_pricing_entry(
+        "foo", "2025-01-01", input_price=1.0, output_price=2.0, cached_input_price=0.5
+    )
+    assert ("foo", "2025-01-01") in pricing.load_pricing()
+
+    pricing.clear_local_pricing()
+    assert pricing.load_pricing() == {}  # offline mode → only local overrides considered
+
+
+def test_add_pricing_entry_validation():
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    with pytest.raises(ValueError):
+        pricing.add_pricing_entry("", "2025-01-01", input_price=0.1, output_price=0.2)
+
+    with pytest.raises(ValueError):
+        pricing.add_pricing_entry("m", "2025-1-1", input_price=0.1, output_price=0.2)
+
+    with pytest.raises(ValueError):
+        pricing.add_pricing_entry("m", "2025-01-01", input_price=-0.1, output_price=0.2)
+
+    with pytest.raises(ValueError):
+        pricing.add_pricing_entry("m", "2025-01-01", input_price=0.1, output_price=-0.2)
+
+
+def test_add_pricing_entries_bulk_and_replace_flag():
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing.set_offline_mode(True)
+
+    pricing.add_pricing_entries([
+        ("m1", "2025-01-01", 0.1, 0.2, 0.05),
+        ("m2", "2025-01-01", 0.3, 0.4, None),
+    ])
+
+    d = pricing.load_pricing()
+    assert ("m1", "2025-01-01") in d and ("m2", "2025-01-01") in d
+
+    # Attempt to add existing without replace → KeyError
+    with pytest.raises(KeyError):
+        pricing.add_pricing_entries([
+            ("m1", "2025-01-01", 9.9, 9.9, 9.9),
+        ], replace=False)
+
+    # Replace = True should update
+    pricing.add_pricing_entries([
+        ("m1", "2025-01-01", 1.1, 2.2, 0.0),  # 0.0 → None
+    ], replace=True)
+
+    d2 = pricing.load_pricing()
+    assert d2[("m1", "2025-01-01")] == {
+        "input_price": 1.1, "cached_input_price": None, "output_price": 2.2
+    }
+
+
+def test_refresh_pricing_immediate_fetch(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing._OFFLINE_ONLY = False
+
+    current = {"text": _csv_text(["m,2025-01-01,0.1,,0.2"])}
+
+    class _Resp:
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): return None
+
+    def fake_get(url, timeout):
+        return _Resp(current["text"])
+
+    monkeypatch.setattr(pricing.requests, "get", fake_get)
+
+    # First refresh -> load v1
+    pricing.refresh_pricing()
+    d1 = pricing.load_pricing()
+    assert d1[("m", "2025-01-01")] == {
+        "input_price": 0.1, "cached_input_price": None, "output_price": 0.2
+    }
+
+    # Change remote to v2 and refresh again
+    current["text"] = _csv_text(["m,2025-01-01,9.9,0.7,8.8"])
+    pricing.refresh_pricing()
+    d2 = pricing.load_pricing()
+    assert d2[("m", "2025-01-01")] == {
+        "input_price": 9.9, "cached_input_price": 0.7, "output_price": 8.8
+    }
+
+
+def test_fetch_csv_parses_blank_cached_price_as_none(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing._OFFLINE_ONLY = False
+
+    csv_blank_cached = _csv_text([
+        "x,2025-02-02,0.50,,1.00",  # blank cached_input_price
+    ])
+
+    class _Resp:
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): return None
+
+    monkeypatch.setattr(pricing.requests, "get", lambda url, timeout: _Resp(csv_blank_cached))
+
+    d = pricing.load_pricing()
+    assert d[("x", "2025-02-02")]["cached_input_price"] is None
+
+
+def test_set_offline_mode_refresh_noop(monkeypatch):
+    importlib.reload(occ.pricing)
+    pricing = occ.pricing
+
+    pricing._CACHE = None
+    pricing._CACHE_TS = 0
+    pricing._LOCAL_OVERRIDES.clear()
+    pricing.set_offline_mode(True)
+
+    # Any network usage would fail the test
+    def boom(*a, **k): raise AssertionError("Should not call network in offline mode")
+    monkeypatch.setattr(pricing.requests, "get", boom)
+
+    # No error should occur, and cache remains empty until overrides added
+    pricing.refresh_pricing()
+    assert pricing.load_pricing() == {}
+
+    # Add an entry with cached_input_price=0 (treated as None)
+    pricing.add_pricing_entry("y", "2025-03-03", input_price=0.2, output_price=0.4, cached_input_price=0.0)
+    d = pricing.load_pricing()
+    assert d[("y", "2025-03-03")] == {
+        "input_price": 0.2, "cached_input_price": None, "output_price": 0.4
+    }
