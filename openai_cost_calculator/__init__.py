@@ -32,7 +32,10 @@ refresh_pricing()
 """
 from .estimate import estimate_cost, estimate_cost_typed, CostEstimateError
 from .core import calculate_cost_typed
-from .pricing import refresh_pricing
+from .pricing import (
+    add_pricing_entry, add_pricing_entries, clear_local_pricing,
+    set_offline_mode, refresh_pricing
+)
 from .types import CostBreakdown
 
 __all__ = [
@@ -40,6 +43,10 @@ __all__ = [
     "estimate_cost_typed", 
     "calculate_cost_typed",
     "refresh_pricing", 
+    "add_pricing_entry",
+    "add_pricing_entries",
+    "clear_local_pricing",
+    "set_offline_mode",
     "CostEstimateError",
     "CostBreakdown"
 ]
