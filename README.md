@@ -1,25 +1,13 @@
 # openai_cost_calculator
 
-[![PyPI version](https://img.shields.io/pypi/v/openai-cost-calculator)](https://pypi.org/project/openai-cost-calculator/)
+[![PyPI](https://img.shields.io/pypi/v/openai-cost-calculator)](https://pypi.org/project/openai-cost-calculator/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A lightweight, user-friendly library to estimate USD costs for OpenAI and Azure OpenAI API responses.
+Instant, accurate **USD cost estimates** for OpenAI & Azure OpenAI API calls. Works with **Chat Completions** and the **Responses API**, streaming or not. Offers a **typed** `Decimal`-based API for finance-safe math and a **legacy** string API for drop-ins.
 
-## Features
+**Docs:** https://orkunkinay.github.io/openai_cost_calculator/
 
-- **Query-level cost estimation**: calculates **cost per user query** individually, based on the actual tokens used — no guesswork, no aggregate billing needed.
-- **Dual-API support**: works with `chat.completions.create()` and the new `responses.create()`.
-- **Zero boilerplate**: one import & one call: `estimate_cost(response)`.
-- **Strongly-typed API**: new typed functions return `CostBreakdown` dataclass with `Decimal` precision for accurate financial calculations.
-- **Backward compatibility**: legacy string-based API remains unchanged.
-- **Pricing auto-refresh**: daily CSV pull with a helper `refresh_pricing()`.
-- **Edge-case aware**: cached tokens, undated models, streaming generators, Azure deployments handled.
-- **Predictable output**: legacy API returns strings formatted to 8 decimal places; typed API uses `Decimal` for precise arithmetic.
-
-> **Note:**  
-> `openai_cost_calculator` computes the **exact USD cost for each individual user query**,  
-> based on **token counts** directly returned by OpenAI or Azure OpenAI.  
-> It does **not estimate based on model type or guessing** — it uses precise usage data attached to each response.
+---
 
 ## Installation
 
@@ -27,208 +15,116 @@ A lightweight, user-friendly library to estimate USD costs for OpenAI and Azure 
 pip install openai-cost-calculator
 ```
 
-> **Note:** Package name on PyPI uses dashes; import name is `openai_cost_calculator`.
+> Import name uses underscores: `import openai_cost_calculator`
+
+---
 
 ## Quickstart
 
-### Basic Usage (Legacy String API)
-
-```python
-from openai import OpenAI
-from openai_cost_calculator import estimate_cost
-
-client = OpenAI(api_key="sk-...")
-resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role":"user","content":"Hi there!"}],
-)
-
-print(estimate_cost(resp))
-# {'prompt_cost_uncached': '0.00000150',
-#  'prompt_cost_cached'  : '0.00000000',
-#  'completion_cost'     : '0.00000600',
-#  'total_cost'          : '0.00000750'}
-```
-
-### Strongly-Typed Usage (Recommended for New Code)
+**Typed (recommended)**
 
 ```python
 from openai import OpenAI
 from openai_cost_calculator import estimate_cost_typed
 
-client = OpenAI(api_key="sk-...")
+client = OpenAI()
 resp = client.chat.completions.create(
     model="gpt-4o-mini",
-    messages=[{"role":"user","content":"Hi there!"}],
+    messages=[{"role": "user", "content": "Hi there!"}],
 )
 
-cost = estimate_cost_typed(resp)
-print(f"Total cost: ${cost.total_cost}")  # Decimal('0.00000750')
-
-# Access individual components
-print(f"Prompt (uncached): ${cost.prompt_cost_uncached}")
-print(f"Prompt (cached): ${cost.prompt_cost_cached}")
-print(f"Completion: ${cost.completion_cost}")
-
-# Convert to dict with precise Decimal values
-decimal_dict = cost.as_dict(stringify=False)
-
-# Convert to legacy string format
-string_dict = cost.as_dict(stringify=True)
+cost = estimate_cost_typed(resp)  # -> CostBreakdown (Decimal fields)
+print(cost.total_cost)            # Decimal('0.00000750')
+print(cost.as_dict(stringify=True))  # 8-dp strings if you prefer
 ```
 
-### Chat Completion API
+**Legacy (string output)**
 
 ```python
-from openai import OpenAI
 from openai_cost_calculator import estimate_cost
-
-client = OpenAI(api_key="sk-...")
-resp = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role":"user","content":"Hi there!"}],
-)
-
-print(estimate_cost(resp))
-# {'prompt_cost_uncached': '0.00000150',
-#  'prompt_cost_cached'  : '0.00000000',
-#  'completion_cost'     : '0.00000600',
-#  'total_cost'          : '0.00000750'}
+print(estimate_cost(resp))  # dict of 8-dp strings
 ```
 
-### Responses API
+**Responses API**
 
 ```python
-resp = client.responses.create(
-    model="gpt-4.1-mini",
-    input=[{"role":"user","content":"Hi there!"}],
-)
-print(estimate_cost(resp))
-```
-
-## API Reference
-
-### Strongly-Typed API (Recommended)
-
-```python
-from openai_cost_calculator import estimate_cost_typed, calculate_cost_typed, CostBreakdown
-```
-
-#### `estimate_cost_typed(response) → CostBreakdown`
-
-- Accepts a ChatCompletion, streamed chunks, or Response object.
-- Returns a `CostBreakdown` dataclass with `Decimal` fields:
-  - `prompt_cost_uncached: Decimal`
-  - `prompt_cost_cached: Decimal`
-  - `completion_cost: Decimal`
-  - `total_cost: Decimal`
-
-#### `calculate_cost_typed(usage, rates) → CostBreakdown`
-
-- Lower-level function for direct cost calculation.
-- `usage`: dict with `prompt_tokens`, `completion_tokens`, `cached_tokens`
-- `rates`: dict with `input_price`, `cached_input_price`, `output_price`
-- Returns the same `CostBreakdown` dataclass.
-
-#### `CostBreakdown` dataclass
-
-```python
-@dataclass(frozen=True, slots=True)
-class CostBreakdown:
-    prompt_cost_uncached: Decimal
-    prompt_cost_cached: Decimal
-    completion_cost: Decimal
-    total_cost: Decimal
-    
-    def as_dict(self, stringify: bool = True) -> Dict[str, str | Decimal]:
-        """
-        Convert to dictionary.
-        - If stringify=True: return 8-decimal-place strings (legacy format)
-        - If stringify=False: return raw Decimal objects
-        """
-```
-
-### Legacy String API (Backward Compatibility)
-
-```python
-from openai_cost_calculator import estimate_cost, refresh_pricing, CostEstimateError
-```
-
-#### `estimate_cost(response) → dict[str, str]`
-
-- Accepts a ChatCompletion, streamed chunks, or Response object.
-- Returns a dict with:
-  - `prompt_cost_uncached`: str
-  - `prompt_cost_cached`  : str
-  - `completion_cost`     : str
-  - `total_cost`          : str
-
-### Common Functions
-
-#### `refresh_pricing() → None`
-
-- Force-reload the remote pricing CSV (cache TTL is 24h).
-
-#### `CostEstimateError`
-
-- Unified exception for recoverable input, parsing, or pricing errors.
-
-## When to Use Which API
-
-### Use the **Typed API** (`estimate_cost_typed`) when:
-
-- Building new applications
-- Performing financial calculations requiring precision
-- Working with accounting or billing systems
-- Need to aggregate costs across multiple requests
-- Want type safety and IDE support
-
-### Use the **Legacy API** (`estimate_cost`) when:
-
-- Maintaining existing codebases
-- Need string output for JSON serialization
-- Working with systems expecting the original format
-- Quick debugging or logging
-
-## Example: Financial Calculations
-
-```python
+resp = client.responses.create(model="gpt-4.1-mini", input=[{"role":"user","content":"Hi"}])
 from openai_cost_calculator import estimate_cost_typed
-from decimal import Decimal
-
-# Calculate costs for multiple requests
-total_cost = Decimal('0')
-for response in responses:
-    cost = estimate_cost_typed(response)
-    total_cost += cost.total_cost
-    
-print(f"Total cost: ${total_cost}")  # Precise Decimal arithmetic
+print(estimate_cost_typed(resp))
 ```
 
-## Pricing Data
+**Streaming**
 
-Pricing is loaded from a remote CSV at:
-
+```python
+stream = client.chat.completions.create(
+  model="gpt-4o-mini",
+  messages=[{"role":"user","content":"Hi"}],
+  stream=True,
+  stream_options={"include_usage": True},
+)
+from openai_cost_calculator import estimate_cost_typed
+print(estimate_cost_typed(stream))
 ```
-https://raw.githubusercontent.com/orkunkinay/openai_cost_calculator/refs/heads/main/data/gpt_pricing_data.csv
+
+---
+
+## Highlights
+
+- **Typed API:** `CostBreakdown` dataclass with `Decimal` precision  
+- **Drop-in legacy API:** 8-decimal strings (backward compatible)  
+- **Handles edge cases:** cached tokens, undated model strings, streaming generators, Azure deployment names  
+- **Pricing sources:** Remote CSV (24h cache) + **local overrides** and **offline mode**
+
+---
+
+## Pricing utilities
+
+```python
+from openai_cost_calculator import (
+  refresh_pricing, set_offline_mode,
+  add_pricing_entry, add_pricing_entries, clear_local_pricing
+)
+
+# Force refresh (bypasses 24h cache)
+refresh_pricing()
+
+# Run fully offline (no network calls)
+set_offline_mode(True)
+
+# Teach custom prices (per 1M tokens)
+add_pricing_entry(
+  "ollama/qwen3:30b", "2025-08-01",
+  input_price=0.20, output_price=0.60, cached_input_price=0.04
+)
 ```
 
-Cached for 24 hours by default; use `refresh_pricing()` to force an update immediately.
+Remote CSV (auto-fetched, cached 24h):  
+`https://raw.githubusercontent.com/orkunkinay/openai_cost_calculator/refs/heads/main/data/gpt_pricing_data.csv`
+
+---
+
+## Errors
+
+Recoverable issues raise `CostEstimateError` with a clear message (missing pricing row, unexpected input shape, etc.).
+
+---
 
 ## Troubleshooting
 
-- **New model raises "pricing not found"**
-  1. Verify the model/date in the [pricing CSV on GitHub](https://github.com/orkunkinay/openai_cost_calculator/blob/main/data/gpt_pricing_data.csv).
-  2. If missing, open an issue or email the maintainer.
-  3. If present, call `refresh_pricing()`.
+- **“Pricing not found”** → confirm row exists in the CSV; call `refresh_pricing()`.  
+- **`cached_tokens = 0`** → ensure `include_usage_details=True` (classic) or `stream_options={"include_usage": True}` (streaming).  
+- **Model string has no date** → the latest row with `date ≤ today` is used.
 
-- **`cached_tokens = 0` even though some were cached**
-  - Ensure you request `include_usage_details=True` (classic) or `stream_options={"include_usage": True}` (streaming).
+---
 
-## Contributing
+## Links
 
-PRs for additional edge-cases, new pricing formats, or SDK changes are welcome!
+- **Docs & examples:** https://orkunkinay.github.io/openai_cost_calculator/  
+- **Source:** https://github.com/orkunkinay/openai_cost_calculator  
+- **Issues:** https://github.com/orkunkinay/openai_cost_calculator/issues
+
+---
 
 ## License
 
-MIT License © 2025 Orkun Kınay, Murat Barkın Kınay
+MIT © 2025 Orkun Kınay & Murat Barkın Kınay
