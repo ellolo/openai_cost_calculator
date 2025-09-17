@@ -1,7 +1,6 @@
 # openai_cost_calculator
 
-[![PyPI](https://img.shields.io/pypi/v/openai-cost-calculator)](https://pypi.org/project/openai-cost-calculator/)
-[![Python](https://img.shields.io/pypi/pyversions/openai-cost-calculator.svg)](https://pypi.org/project/openai-cost-calculator/)
+[![PyPI version](https://img.shields.io/pypi/v/openai-cost-calculator)](https://pypi.org/project/openai-cost-calculator/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Instant, accurate **USD cost estimates** for OpenAI & Azure OpenAI API calls. Works with **Chat Completions** and the **Responses API**, streaming or not. Offers a **typed** `Decimal`-based API for finance-safe math and a **legacy** string API for drop-ins.
