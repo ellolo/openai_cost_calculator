@@ -1398,8 +1398,8 @@ wheels = [
 ]
 
 [[package]]
-name = "openai-cost-calculator"
-version = "1.1.1"
+name = "openai-cost-calculator-with-lanchain"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "dotenv" },
@@ -1409,6 +1409,8 @@ dependencies = [
     { name = "langchain-openai", version = "0.1.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "langchain-openai", version = "0.3.35", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
     { name = "langchain-openai", version = "1.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "requests", version = "2.32.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
 ]
 
 [package.metadata]
@@ -1416,6 +1418,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "langchain", specifier = ">=0.0.27" },
     { name = "langchain-openai", specifier = ">=0.1.25" },
+    { name = "requests", specifier = ">=2.32.4" },
 ]
 
 [[package]]
