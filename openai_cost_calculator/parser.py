@@ -54,11 +54,30 @@ def extract_usage(obj: Any) -> Dict[str, int]:
           - usage.completion_tokens
           - usage.prompt_tokens_details.cached_tokens
     """
-    if not hasattr(obj, "usage"):
-        raise AttributeError("Response / chunk has no `.usage` attribute")
 
-    u = obj.usage
+    def _objectify_dict(d: Dict[str, Any]) -> Any:
+        """Convert a dictionary into an object with attributes for keys."""
+        class DictObj(dict):
+            def __getattr__(self, name):
+                try:
+                    value = self[name]
+                    return value if not isinstance(value, dict) else DictObj(value)
+                except KeyError:
+                    raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+            
+        return DictObj(d)
 
+    # If obj is a dictionary, transform it into an object with attributes for keys.
+    if isinstance(obj, dict):
+        obj = _objectify_dict(obj) 
+
+    if hasattr(obj, "usage"):
+        u = obj.usage
+    elif hasattr(obj, "token_usage"):
+        u = obj.token_usage
+    else:
+        raise AttributeError("Response / chunk has no `.usage` or `.token_usage` attribute")
+    
     # ----------- Find prompt / completion tokens ---------------------------
     if hasattr(u, "input_tokens"):            # new schema
         prompt_tokens = getattr(u, "input_tokens", 0) or 0

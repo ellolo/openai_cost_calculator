@@ -54,7 +54,7 @@ def _find_rates(model_name: str, model_date: str) -> Dict[str, float]:
 # --------------------------------------------------------------------------- #
 #   PUBLIC: estimate_cost_typed                                               #
 # --------------------------------------------------------------------------- #
-def estimate_cost_typed(response: Any) -> CostBreakdown:
+def estimate_cost_typed(response: Any, is_langchain_response: bool = False) -> CostBreakdown:
     """
     Estimate costs and return a strongly-typed CostBreakdown dataclass.
     
@@ -87,17 +87,23 @@ def estimate_cost_typed(response: Any) -> CostBreakdown:
     >>> cost.as_dict(stringify=True)   # Returns dict with string values (legacy format)
     """
     try:
+        if is_langchain_response:
+            chunk = response.response_metadata
+            
         # -------------------------------------------------------------- usage
-        if hasattr(response, "__iter__") and not hasattr(response, "model"):
-            # stream → look at the LAST chunk that carried `usage`
-            chunk = _pick_last_chunk(response)
         else:
-            chunk = response
-
+            if hasattr(response, "__iter__") and not hasattr(response, "model"):
+                # stream → look at the LAST chunk that carried `usage`
+                chunk = _pick_last_chunk(response)
+            else:
+                chunk = response
         usage = extract_usage(chunk)
-
         # ------------------------------------------------------------- model
-        details = extract_model_details(chunk.model)
+        if is_langchain_response:
+            model = response.response_metadata["model_name"]
+        else:
+            model = chunk.model
+        details = extract_model_details(model)
         rates = _find_rates(details["model_name"], details["model_date"])
 
         # -------------------------------------------------------------- cost
