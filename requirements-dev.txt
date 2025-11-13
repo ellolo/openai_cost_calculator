@@ -1,2 +1,5 @@
 pytest==8.3.5
 requests
+dotenv
+langchain
+langchain-openai
