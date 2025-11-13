@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/openai-cost-calculator)](https://pypi.org/project/openai-cost-calculator/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Instant, accurate **USD cost estimates** for OpenAI & Azure OpenAI API calls. Works with **Chat Completions** and the **Responses API**, streaming or not. Offers a **typed** `Decimal`-based API for finance-safe math and a **legacy** string API for drop-ins.
+Instant, accurate **USD cost estimates** for OpenAI & Azure OpenAI API calls. Works with **Chat Completions** and the **Responses API**, streaming or not. It also works with Langchain `invoke` responses. Offers a **typed** `Decimal`-based API for finance-safe math and a **legacy** string API for drop-ins.
 
 **Docs:** https://orkunkinay.github.io/openai_cost_calculator/
 
@@ -12,10 +12,10 @@ Instant, accurate **USD cost estimates** for OpenAI & Azure OpenAI API calls. Wo
 ## Installation
 
 ```bash
-pip install openai-cost-calculator
+pip install openai-cost-calculator-with-langchain
 ```
 
-> Import name uses underscores: `import openai_cost_calculator`
+> Import name uses underscores: `import openai_cost_calculator-with-langchain`
 
 ---
 
